@@ -1,0 +1,546 @@
+### Vector AutoRegression Model for Omnichannel Marketing Analysis
+
+```{r}
+library(readr)
+library(ggplot2)
+library(forecast)
+```
+
+**Step 1: Load the dataset**
+
+```{r}
+data <- read_csv("market_new.csv")
+data
+data2 <- read_csv("market_new.csv")
+```
+
+**Step 2: Time series Visualization of the parameters**
+
+```{r}
+ts.plot(data$Sale, col="blue", main="Sales Over Time", ylab="Sales in USD")
+
+ts.plot(data$InStrSpending, col="red", main="In-store Spending Over Time", ylab="In-Store Spending in USD")
+
+ts.plot(data$OnlineAdsSpending, col="green", main="Online Ads Spending Over Time", ylab="Online Ads Spending in USD")
+
+ts.plot(data$Radio, col="purple", main="Radio Campaigns Over Time", ylab="Campaigns")
+
+ts.plot(data$Discount, col="brown", main="Discounts Over Time", ylab="Discounts in USD")
+
+ts.plot(data$StockRate, col="pink", main="Stock Rate Over Time", ylab="TStock Rate")
+
+ts.plot(data$Price, col="violet", main="Price Over Time", ylab="Price in USD")
+
+```
+
+**Step 3: ACF, PACF Plots**
+
+```{r}
+library(readr)
+library(forecast)
+
+# Assuming 'data' has already been read using read_csv("market_new.csv")
+
+Sale <- ts(data$Sale, frequency = 4, start = c(1, 1))
+ggtsdisplay(Sale, main="Sales Over Time")
+
+InStrSpending <- ts(data$InStrSpending, frequency = 4, start = c(1, 1))
+ggtsdisplay(InStrSpending, main="In-store Spending Over Time")
+
+OnlineAdsSpending <- ts(data$OnlineAdsSpending, frequency = 4, start = c(1, 1))
+ggtsdisplay(OnlineAdsSpending, main="Online Ads Spending Over Time")
+
+TVSpending <- ts(data$TVSpending, frequency = 4, start = c(1, 1))
+ggtsdisplay(TVSpending, main="TV Spending Over Time")
+
+Radio <- ts(data$Radio, frequency = 4, start = c(1, 1))
+ggtsdisplay(Radio, main="Radio Campaigns Over Time")
+
+Discount <- ts(data$Discount, frequency = 4, start = c(1, 1))
+ggtsdisplay(Discount, main="Discounts Over Time")
+
+StockRate <- ts(data$StockRate, frequency = 4, start = c(1, 1))
+ggtsdisplay(StockRate, main="Stock Rate Over Time")
+
+Price <- ts(data$Price, frequency = 4, start = c(1, 1))
+ggtsdisplay(Price, main="Price Over Time")
+```
+
+**Step 4: Unit Root Testing (ADF, PP, KPSS tests)**
+
+```{r}
+# Load necessary libraries
+library(readr)
+library(tseries)
+library(forecast)
+
+# Assuming 'data' has already been loaded
+
+# Convert columns to time series
+Sale <- ts(data$Sale, frequency = 4, start = c(1, 1))
+InStrSpending <- ts(data$InStrSpending, frequency = 4, start = c(1, 1))
+OnlineAdsSpending <- ts(data$OnlineAdsSpending, frequency = 4, start = c(1, 1))
+TVSpending <- ts(data$TVSpending, frequency = 4, start = c(1, 1))
+Radio <- ts(data$Radio, frequency = 4, start = c(1, 1))
+Discount <- ts(data$Discount, frequency = 4, start = c(1, 1))
+StockRate <- ts(data$StockRate, frequency = 4, start = c(1, 1))
+Price <- ts(data$Price, frequency = 4, start = c(1, 1))
+
+# List of time series for iteration
+ts_list <- list(Sale = Sale, InStrSpending = InStrSpending, OnlineAdsSpending = OnlineAdsSpending,
+                TVSpending = TVSpending, Radio = Radio, Discount = Discount,
+                StockRate = StockRate, Price = Price)
+
+# Function to perform and interpret unit root tests
+perform_and_interpret_unit_root_test <- function(ts_data, name) {
+  cat("Augmented Dickey-Fuller Test for", name, "\n")
+  adf_test <- adf.test(ts_data, alternative = "stationary")
+  print(adf_test)
+  if(adf_test$p.value < 0.05) {
+    cat("Result: The series is stationary according to ADF test.\n\n")
+  } else {
+    cat("Result: The series is not stationary according to ADF test.\n\n")
+  }
+  
+  cat("Phillips-Perron Test for", name, "\n")
+  pp_test <- pp.test(ts_data, alternative = "stationary")
+  print(pp_test)
+  if(pp_test$p.value < 0.05) {
+    cat("Result: The series is stationary according to PP test.\n\n")
+  } else {
+    cat("Result: The series is not stationary according to PP test.\n\n")
+  }
+  
+  cat("KPSS Test for", name, "\n")
+  kpss_test <- kpss.test(ts_data)
+  print(kpss_test)
+  if(kpss_test$p.value < 0.05) {
+    cat("Result: The series is not stationary according to KPSS test.\n\n")
+  } else {
+    cat("Result: The series is stationary according to KPSS test.\n\n")
+  }
+}
+
+# Apply tests to each time series
+for (name in names(ts_list)) {
+  perform_and_interpret_unit_root_test(ts_list[[name]], name)
+}
+ndiffs(data$StockRate)
+StockRate <- diff(data$StockRate)
+```
+
+Stationarity implies that the statistical properties of your series, such as the mean and variance, remain constant over time. This stability is crucial for predictive modeling since it suggests that the patterns observed in the past will likely persist in the future, making your models more reliable.
+
+Stationary series do not require transformations such as differencing or detrending to make the mean and variance stable. For non-stationary series, such transformations are often necessary to remove trends or seasonality and make the series suitable for modeling.
+
+We can proceed and construct our VAR model now.
+
+```{r}
+# Log-transformation
+data$Sale <- log(data$Sale)
+data$TVSpending <- log(data$TVSpending)
+data$OnlineAdsSpending <- log(data$OnlineAdsSpending)
+data$Radio <- log(data$Radio)
+data$InStrSpending <- log(data$InStrSpending)
+data$Discount <- log(data$Discount)
+data$StockRate <- log(data$StockRate)
+data$Price <- log(data$Price)
+data
+```
+
+**Step 5: VAR model**
+
+```{r}
+library(vars)
+library(stargazer)
+
+data_ts <- ts(data[, c("Sale", "TVSpending", "OnlineAdsSpending", "Radio", "InStrSpending", "Discount", "StockRate", "Price")], frequency=4)
+
+# Fit a VAR model with max lag of 1
+var_model <- VAR(data_ts, type="const", lag.max= 1, ic="AIC")
+
+
+lmp <- var_model$varresult
+
+stargazer(lmp, type = "text", dep.var.labels.include = FALSE)
+```
+
+**Interpretation**:
+
+**Coefficients:** Each variable's equation shows the impact of all included variables (lagged once) on it. For example, in the equation for **`Price`**, the coefficient of **`L1.Price`** indicates the effect of the previous week's price on the current week's price. Similarly, other coefficients represent the influence of other variables' lagged values on the current value of the equation's focus variable.
+
+**Standard Errors, t-statistics, and p-values:** These statistics are provided for each coefficient, helping in assessing the significance of the relationships. A lower p-value (typically \<0.05) indicates a significant relationship between the variables.
+
+**Correlation Matrix of Residuals:** This matrix at the end of the summary indicates the correlations between the residuals of the equations. Significant correlations might suggest missing variables or relationships.
+
+Interpreting the coefficients from a VAR model involves understanding how changes in one variable are associated with changes in another variable, based on the lagged values. However, the detailed coefficients for all equations in the VAR model are extensive and cover multiple variables and their relationships. For efficient analysis and to draw meaningful insights, we will focus on interpreting the coefficients for key variables that are typically of interest in this context: **`Sale`** as the dependent variable, influenced by marketing spending (**`InStrSpending`**, **`TVSpending`**, **`OnlineAdsSpending`**) and other factors like **`Price`**, **`Discount`**, **`StockRate`**, and **`Radio`** Campaigns.
+
+**Step 6: Extracting features related to Sale**
+
+I will extract and highlight important coefficients related to **`Sale`**, focusing on the significance of these relationships (based on the p-values where available) and the magnitude of the coefficients. This will help us understand how changes in marketing spending and other factors are associated with changes in sales.
+
+```{r}
+# Assuming 'var_model' is already fitted using VAR() as shown in your previous code
+
+# Accessing the results for the 'Sale' equation
+sale_eq <- summary(var_model)$varresult$Sale
+
+# Display the coefficients, standard errors, t-values, and p-values for the 'Sale' equation
+cat("Coefficients for the 'Sale' equation:\n")
+print(coef(sale_eq))
+```
+
+**Strategic Implications From the VAR model:**
+
+**TV Advertising Efficiency**: Significant positive impact on sales indicates TV ads are a potent tool for driving sales and should remain a central element of the marketing strategy.
+
+**In-Store Promotion Value**: In-store spending's substantial positive effect on sales underscores the importance of investing in the physical retail experience to boost purchase rates.
+
+**Online Advertising Reassessment**: The non-significant impact of online ad spend calls for a thorough review of digital marketing tactics to enhance their contribution to sales.
+
+**Discount Strategy Refinement**: Discounts do not significantly affect sales, suggesting the need for a more targeted discount strategy, possibly focusing on customer segmentation and purchasing behaviors.
+
+**Price Elasticity Consideration**: The price's non-significant positive relationship with sales offers the potential for strategic pricing without major sales volume loss, hinting at a less price-sensitive market or a strong brand perception.
+
+The lack of statistical significance calls for further investigation, possibly through more refined models, additional data, or controlled experiments to validate these potential relationships.
+
+**Step 7: Residual Analysis**
+
+```{r}
+library(ggplot2)
+library(ggfortify)
+
+data.residuals <- data.frame(residuals(var_model))
+data.residuals <- ts(data.residuals, frequency = 4, start = c(1, 1))
+
+plot(data.residuals)
+```
+
+The residuals appear to fluctuate around zero without any clear or consistent pattern. This lack of pattern is a good sign as it suggests there are no obvious trends or seasonality unaccounted for by the model. There is no visible upward or downward trend, which implies that the model does not exhibit systematic bias over time in predicting Sales within our data set. The variability of the residuals seems consistent over time, which is desirable. The fact that the residuals oscillate around a constant mean suggests that the residuals are stationary, which is a key assumption in VAR modeling.
+
+**Step 8: Granger Causality**
+
+Granger causality tests assess whether one time series variable can be used to predict another, thereby providing insights into potential causal relationships between variables.
+
+**a) TV Spending:**
+
+```{r}
+# Perform Granger causality test
+granger_test <- causality(var_model, cause = "TVSpending")
+
+# View the test results
+print(granger_test)
+```
+
+These results imply that changes in TV advertising spending do not significantly predict changes in the other variables, and vice versa, within the context of the analyzed data and model.
+
+**b) Online Ads:**
+
+```{r}
+# Perform Granger causality test
+granger_test <- causality(var_model, cause = "OnlineAdsSpending")
+
+# View the test results
+print(granger_test)
+```
+
+These results suggest that changes in online advertising spending do not significantly predict changes in the other variables, and vice versa, within the context of the analyzed data and model.
+
+**c) In-store Spending:**
+
+```{r}
+# Perform Granger causality test
+granger_test <- causality(var_model, cause = "InStrSpending")
+
+# View the test results
+print(granger_test)
+
+```
+
+Based on the Granger causality and instantaneous causality tests, there is significant evidence to suggest that In-Store Spending ('InStrSpending') Granger-causes 'Sale' and 'TVSpending'. This implies that changes in in-store marketing efforts precede and predict changes in sales and TV advertising spending. Additionally, the instantaneous causality test indicates that there is no significant instantaneous relationship between In-Store Spending and the other variables ('OnlineAdsSpending', 'Radio', 'Discount', 'StockRate', 'Price'). These results highlight the importance of in-store marketing activities in influencing sales and TV advertising strategies, suggesting that investing in in-store initiatives may yield positive outcomes for the business.
+
+**d) StockRate, Price and Discount:**
+
+```{r}
+# Perform Granger causality test
+granger_test1 <- causality(var_model, cause = "StockRate")
+granger_test2 <- causality(var_model, cause = "Discount")
+granger_test3 <- causality(var_model, cause = "Price")
+
+# View the test results
+print(granger_test1)
+print(granger_test2)
+print(granger_test3)
+```
+
+Based on the Granger causality tests conducted for discount, price, and stock rate, there appears to be no significant causal relationship between these variables and sales, TV spending, or online advertising spending. The F-tests and chi-squared tests yield p-values greater than 0.05, indicating that there is insufficient evidence to reject the null hypothesis, suggesting no Granger causality between these variables. Similarly, the instantaneous causality tests also fail to provide evidence of immediate causal effects between discount, price, and stock rate, and sales or other marketing variables.
+
+**d) Radio:**
+
+```{r}
+# Perform Granger causality test
+granger_test <- causality(var_model, cause = "Radio")
+
+# View the test results
+print(granger_test)
+```
+
+Based on the Granger causality and instantaneous causality tests, there is no significant evidence to suggest that Radio advertising spending ('Radio') Granger-causes or has an instantaneous causality with 'Sale', 'TVSpending', or 'OnlineAdsSpending'. This implies that changes in radio advertising spending do not precede or predict changes in sales, TV advertising spending, or online advertising spending.
+
+```{r}
+granger_test <- causality(var_model, cause = "Sale")
+
+# View the test results
+print(granger_test)
+```
+
+**Insights/Takeaways:**
+
+The Granger causality tests conducted on the variables TV spending, online advertising spending, in-store spending, and radio advertising spending, discount, price, stock rate, along with sales, yielded mixed results. While there was no significant evidence of Granger causality between other variables with sales. However, the tests revealed that in-store spending does indeed Granger-cause sales and has instantaneous causality. This implies that changes in in-store advertising spending may precede and influence changes in sales, suggesting the importance of investing in optimizing the retail environment and in-store marketing strategies to drive sales growth. Overall, these findings emphasize the multifaceted nature of marketing channels and underscore the need for businesses to carefully evaluate and allocate resources to maximize their effectiveness in driving consumer purchasing behavior.
+
+**Step 9: IRF Analysis**
+
+Impulse Response Function (IRF) analysis in the context of Vector Autoregression (VAR) models is a powerful tool for understanding how a shock to one variable affects other variables in the system over time.
+
+**a) TVSpending**
+
+```{r}
+library(vars)
+
+irfs_tv <- irf(var_model, impulse = "TVSpending", response = "Sale", n.ahead = 8, boot = TRUE)
+
+# Plotting the impulse response
+plot(irfs_tv)
+
+```
+
+The Orthogonal Impulse Response graph illustrates the effect of a one-time shock to TV Spending on sales over several periods. It shows an initial positive impact on sales that peaks around the first period, then quickly diminishes and becomes statistically insignificant. This suggests that while TV advertising can have an immediate boost on sales, the effect does not sustain itself over time and becomes uncertain after the initial period.
+
+**b) InStrSpending**
+
+```{r}
+irfs_instore <- irf(var_model, impulse = "InStrSpending", response = "Sale", n.ahead = 8, boot = TRUE)
+
+# Plotting the impulse response
+plot(irfs_instore)
+```
+
+The Orthogonal Impulse Response graph indicates that a one-time increase in In-Store Spending has a significant positive impact on sales, peaking around the second period. The effect remains above zero and gradually declines but stays within the confidence interval, suggesting that the positive impact of in-store spending on sales diminishes over time but may have a more sustained influence compared to TV Spending.
+
+**c) OnlineAdsSpending**
+
+```{r}
+irfs_online <- irf(var_model, impulse = "OnlineAdsSpending", response = "Sale", n.ahead = 8, boot = TRUE)
+
+# Plotting the impulse response
+plot(irfs_online)
+```
+
+The Orthogonal Impulse Response graph for Online Ads Spending shows an initial negative impact on sales that hovers around zero, indicating no substantial or lasting positive influence on sales. The response fluctuates within the confidence interval but remains close to zero, suggesting that online advertising, as modeled, does not have a clear or strong effect on sales over the observed periods.
+
+**d) Radio Campaigns**
+
+```{r}
+irfs_radio <- irf(var_model, impulse = "Radio", response = "Sale", n.ahead = 8, boot = TRUE)
+
+# Plotting the impulse response
+plot(irfs_radio)
+```
+
+The Orthogonal Impulse Response graph for Radio shows a fluctuating effect on sales with an initial drop below zero, followed by a brief rise above zero, and then a stabilization close to zero within the confidence interval. This pattern suggests an inconsistent impact of radio advertising on sales, with a possible initial negative effect that neutralizes over time, indicating a lack of clear, lasting positive influence from radio advertising in the observed periods.
+
+**e) Discount**
+
+```{r}
+irfs_discount <- irf(var_model, impulse = "Discount", response = "Sale", n.ahead = 8, boot = TRUE)
+
+# Plotting the impulse response
+plot(irfs_discount)
+```
+
+The IRF for Discount exhibits an initial dip below zero, suggesting that an unexpected increase in discounts could initially lead to a decrease in sales. This could be indicative of higher discounts driving sales volume but reducing total revenue, or it might reflect a delay in customer response to the discounts. Over time, the effect oscillates and then stabilizes, with confidence intervals including zero, suggesting that the long-term impact of discounts on sales is uncertain and not statistically significant.
+
+**f) Stock Rate**
+
+```{r}
+irfs_stockrate <- irf(var_model, impulse = "StockRate", response = "Sale", n.ahead = 8, boot = TRUE)
+
+# Plotting the impulse response
+plot(irfs_stockrate)
+```
+
+*The IRF for StockRate shows a sharp decrease in sales immediately following an impulse, indicating that an increase in stock rate (number of times the product was out of stock divided by the total number of product visits) might negatively impact sales in the short term. This could reflect issues with overstocking or inefficiencies in inventory management. The effect quickly converges towards zero and remains within the confidence interval, pointing to no significant long-term impact on sales.*
+
+**g) Price**
+
+```{r}
+irfs_price <- irf(var_model, impulse = "Price", response = "Sale", n.ahead = 8, boot = TRUE)
+
+# Plotting the impulse response
+plot(irfs_price)
+
+irfs <- irf(var_model, impulse = c('TVSpending', 'InStrSpending', 'OnlineAdsSpending', 'Radio', 'StockRate', 'Discount', 'Price'), response = 'Sale', n.ahead = 8 , ortho = TRUE, ci=0.95)
+plot(irfs)
+```
+
+In summary, while an initial price increase may lead to a peak in sales due to factors like perceived value or promotional effects, the long-term sustainability of sales growth requires strategic pricing decisions that balance profitability with consumer demand and competitive dynamics. Continuous monitoring and adjustment of pricing strategies based on market feedback and customer insights are essential for optimizing sales performance and maximizing profitability over time.
+
+**Insights and Takeaways:**
+
+The impulse response functions for TVSpending, InStrSpending, OnlineAdsSpending, and Radio campaigns reveal varied temporal effects on sales. TV and In-Store Spending yield immediate boosts in sales, suggesting a direct and rapid influence of these advertising channels, whereas Online Ads initially depress sales, hinting at complex consumer responses to digital marketing. Radio's effect on sales materializes more slowly, possibly reflecting the cumulative nature of broadcast advertising. The responses to Discount indicate an immediate adverse effect on sales, suggesting that while discounts can increase volume, they may lower overall revenue. while an initial price increase may lead to a peak in sales due to factors like perceived value or promotional effects, the long-term sustainability of sales growth requires strategic pricing decisions that balance profitability with consumer demand and competitive dynamics. Over time, these effects seem to dissipate, indicating that the long-term impact of pricing strategy and discounting on sales is not clearly determinable from the current analysis. In-Store Spending and TV Spending demonstrate initial positive impacts on sales, but these effects diminish over time. These findings support the idea of reallocating some budget towards these channels given their initial positive influence on sales*.* However, for all channels, these impacts and their influence converge to a negligible effect within a eight-week period, underscoring the short-term nature of these marketing activities on sales.
+
+**Step 10:** **Immediate and Long-term effects**
+
+```{r}
+irf.table.ci <- round(data.frame(
+  Period = seq(1, 8),
+  TVSpending = irfs_tv$irf$TVSpending[-1],  # Assuming IRF object has Sale as the default response
+  TVSpending_Lower = irfs_tv$Lower$TVSpending[-1],
+  TVSpending_Upper = irfs_tv$Upper$TVSpending[-1],
+  InStrSpending = irfs_instore$irf$InStrSpending[-1],
+  InStrSpending_Lower = irfs_instore$Lower$InStrSpending[-1],
+  InStrSpending_Upper = irfs_instore$Upper$InStrSpending[-1],
+  OnlineAdsSpending = irfs_online$irf$OnlineAdsSpending[-1],
+  OnlineAdsSpending_Lower = irfs_online$Lower$OnlineAdsSpending[-1],
+  OnlineAdsSpending_Upper = irfs_online$Upper$OnlineAdsSpending[-1],
+  Radio = irfs_radio$irf$Radio[-1],
+  Radio_Lower = irfs_radio$Lower$Radio[-1],
+  Radio_Upper = irfs_radio$Upper$Radio[-1],
+  Discount = irfs_discount$irf$Discount[-1],
+  Discount_Lower = irfs_discount$Lower$Discount[-1],
+  Discount_Upper = irfs_discount$Upper$Discount[-1],
+  StockRate = irfs_stockrate$irf$StockRate[-1],
+  StockRate_Lower = irfs_stockrate$Lower$StockRate[-1],
+  StockRate_Upper = irfs_stockrate$Upper$StockRate[-1],
+  Price = irfs_price$irf$Price[-1],
+  Price_Lower = irfs_price$Lower$Price[-1],
+  Price_Upper = irfs_price$Upper$Price[-1]
+), 4)
+
+colnames(irf.table.ci) <- c('Period', 
+                            'TVSpending', 'TVSpending Lower', 'TVSpending Upper',
+                            'InStrSpending', 'InStrSpending Lower', 'InStrSpending Upper',
+                            'OnlineAdsSpending', 'OnlineAdsSpending Lower', 'OnlineAdsSpending Upper',
+                            'Radio', 'Radio Lower', 'Radio Upper',
+                            'Discount', 'Discount Lower', 'Discount Upper',
+                            'StockRate', 'StockRate Lower', 'StockRate Upper',
+                            'Price', 'Price Lower', 'Price Upper')
+
+knitr::kable(irf.table.ci)
+
+
+```
+
+**Step 11:** **Now we apply the t\>1 criteria to determine coefficient significance and calculate long-term elasticities**
+
+```{r}
+# Set the number of periods and the threshold for t-value
+num_periods <- 8
+significant_t_value <- 1
+
+# Initialize a matrix to store the long-term effects
+lt_effects <- matrix(nrow = num_periods, ncol = 7, dimnames = list(NULL, c("TVSpending", "InStrSpending", "OnlineAdsSpending", "Radio", "Discount", "StockRate", "Price")))
+
+# Function to calculate significant long-term effects based on t > 1 criteria
+calculate_long_term_effects <- function(irf, upper, lower) {
+  # Initialize a vector to store results
+  results <- numeric(num_periods)
+  
+  # Calculate the t-statistic and determine significance for each period
+  for (i in 1:num_periods) {
+    # Calculate the standard error
+    se <- (upper[i] - lower[i]) / (2 * 1.96)
+    # Calculate the t-statistic
+    t_value <- irf[i] / se
+    # Apply the t > 1 criterion
+    results[i] <- if (abs(t_value) > significant_t_value) irf[i] else 0
+  }
+  
+  return(results)
+}
+
+# Calculate the long-term effects for each variable
+lt_effects[, "TVSpending"] <- calculate_long_term_effects(irfs_tv$irf$TVSpending[-1], irfs_tv$Upper$TVSpending[-1], irfs_tv$Lower$TVSpending[-1])
+lt_effects[, "InStrSpending"] <- calculate_long_term_effects(irfs_instore$irf$InStrSpending[-1], irfs_instore$Upper$InStrSpending[-1], irfs_instore$Lower$InStrSpending[-1])
+lt_effects[, "OnlineAdsSpending"] <- calculate_long_term_effects(irfs_online$irf$OnlineAdsSpending[-1], irfs_online$Upper$OnlineAdsSpending[-1], irfs_online$Lower$OnlineAdsSpending[-1])
+lt_effects[, "Radio"] <- calculate_long_term_effects(irfs_radio$irf$Radio[-1], irfs_radio$Upper$Radio[-1], irfs_radio$Lower$Radio[-1])
+lt_effects[, "Discount"] <- calculate_long_term_effects(irfs_discount$irf$Discount[-1], irfs_discount$Upper$Discount[-1], irfs_discount$Lower$Discount[-1])
+lt_effects[, "StockRate"] <- calculate_long_term_effects(irfs_stockrate$irf$StockRate[-1], irfs_stockrate$Upper$StockRate[-1], irfs_stockrate$Lower$StockRate[-1])
+lt_effects[, "Price"] <- calculate_long_term_effects(irfs_price$irf$Price[-1], irfs_price$Upper$Price[-1], irfs_price$Lower$Price[-1])
+
+# Sum up the significant long-term effects for each variable
+long_term_effects_sum <- colSums(lt_effects)
+
+# Convert the matrix of long-term effects to a data frame for printing
+lt_effects_df <- as.data.frame(lt_effects)
+
+# Add a period column to the data frame
+lt_effects_df$Period <- seq(1, nrow(lt_effects_df))
+
+# Reorder columns so that Period is first
+lt_effects_df <- lt_effects_df[, c(ncol(lt_effects_df), 1:(ncol(lt_effects_df)-1))]
+
+
+knitr::kable(lt_effects_df)
+
+```
+
+According to the long-term effects analysis using the t\>1 criterion, only the immediate effects (in Period 1) for TV Spending and In-Store Spending are significantly different from zero. This suggests that the impact of marketing investments in these areas on sales diminishes quickly and does not persist beyond the short term. The positive initial effect followed by a negative effect in the second period suggests that stock availability might initially satisfy demand but persistent stockouts could damage sales. Addressing inventory management could help capitalize on demand without sacrificing long-term customer satisfaction. Based on the long-term effects table, it seems that radio campaigns have a negligible impact on sales over time. The coefficients for Radio are consistently close to zero across all periods with a negative coefficient for the first period, indicating that changes in radio advertising spending do not lead to significant changes in sales. Therefore, reallocating budget from radio campaigns to other marketing channels or strategic initiatives that have shown more promising long-term effects on sales may be a prudent decision.
+
+**Step 12: Budget Reallocation**
+
+Based on the IRF and long-term effects, reallocating the budget to favor In-Store Spending and TV Spending might be advisable due to their significant short-term effects on sales. However, given that these effects are not sustained, it's crucial to optimize the timing and targeting of these investments.
+
+For Radio campaigns and Stock Rate, it's essential to dig deeper. For Radio, consider the effectiveness and reach of the campaigns. For Stock Rate, maintaining optimal inventory levels without frequent stockouts is vital.
+
+```{r}
+total_TVSpending <- sum(data2$TVSpending)
+total_OnlineAdsSpending <- sum(data2$OnlineAdsSpending)
+total_InStrSpending <- sum(data2$InStrSpending)
+total_OnlineAdsSpending
+
+total_all = total_TVSpending + total_OnlineAdsSpending + total_InStrSpending
+
+costshare_tv<-total_TVSpending/total_all
+costshare_instore<-total_InStrSpending/total_all
+costshare_online<-total_OnlineAdsSpending/total_all
+
+# Ingredients for the pie-chart 
+slices_actual<-c(costshare_tv, costshare_instore, costshare_online  )
+lbls_actual<-c("TV", "In-store", "Online Ads")
+pct_actual<-round(slices_actual*100)
+lbls_actual<-paste(lbls_actual, pct_actual)          
+lbls_actual<-paste(lbls_actual, "%", sep="")  
+
+# Get the pie-chart
+pie(slices_actual, labels=lbls_actual, col=rainbow(length(lbls_actual)), main="Actual Budget Allocation" )
+
+```
+
+```{r}
+# Calculate the total long-term effect for each channel
+total_instore <- sum(lt_effects_df$InStrSpending)
+total_tv <- sum(lt_effects_df$TVSpending)
+
+percentage_instore
+percentage_tv
+
+# Calculate percentages
+percentage_instore <- total_instore / sum(budget_allocation$Amount) * 100
+percentage_tv <- total_tv / sum(budget_allocation$Amount) * 100
+
+# Create a data frame for budget allocation
+budget_allocation <- data.frame(Channel = c("In-Store", "TV"),
+                                Amount = c(total_instore, total_tv),
+                                Percentage = c(percentage_instore, percentage_tv))
+
+# Create a pie chart
+pie(budget_allocation$Amount, labels = paste(budget_allocation$Channel, round(budget_allocation$Percentage, 1), "%"),
+    main = "Budget Allocation", col = rainbow(length(budget_allocation$Channel)))
+
+
+
+
+```
+
+While initial budget allocations favored online advertising, the examination of long-term effects indicates that in-store spending and TV advertising have a more substantial and sustained impact on sales. Specifically, in-store marketing efforts emerge as the most influential, followed closely by TV advertising, while online ads exhibit negligible long-term effects. These findings suggest a shift in budget allocation towards in-store initiatives and TV campaigns to maximize sales impact over time. However, it's crucial to consider overarching marketing objectives, budget constraints, and the competitive landscape when implementing these recommendations to ensure a holistic and effective marketing strategy.
